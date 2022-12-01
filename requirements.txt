@@ -1,0 +1,9 @@
+numpy>=1.23.5
+spacy>=3.4.3
+torch>=1.13.0
+datasets>=2.7.1
+evaluate>=0.3.0
+transformers>=4.24.0
+PyYAML>=6.0
+catalyst>=22.4
+wandb>=0.13.5
