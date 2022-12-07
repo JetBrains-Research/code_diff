@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 
+
 def approx_standard_normal_cdf(x):
     return 0.5 * (1.0 + torch.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * torch.pow(x, 3))))
 
@@ -47,19 +48,11 @@ def mean_flat(tensor):
 
 class GaussianDiffusion:
     def __init__(
-        self,
-        *,
-        betas,
-        model_mean_type,
-        model_var_type,
-        loss_type,
+        self, *, betas,
         rescale_timesteps=False,
         model_arch=None,
         training_mode='emb'
     ):
-        self.model_mean_type = model_mean_type
-        self.model_var_type = model_var_type
-        self.loss_type = loss_type
         self.rescale_timesteps = rescale_timesteps
         self.model_arch=model_arch
 
@@ -772,7 +765,8 @@ class GaussianDiffusion:
 
     def training_losses_e2e(self, model, x_start, t, model_kwargs=None, noise=None):
         input_ids = model_kwargs.pop('input_ids').to(t.device)
-        x_start_mean = model.model.module.get_embeds(input_ids)
+        x_start_mean = model.model.get_embeds(input_ids)
+        # x_start_mean = model.model.module.get_embeds(input_ids)
         std = _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod,
                                    torch.tensor([0]).to(x_start_mean.device),
                                    x_start_mean.shape)
@@ -781,7 +775,8 @@ class GaussianDiffusion:
         if noise is None:
             noise = torch.randn_like(x_start)
         x_t = self.q_sample(x_start, t, noise=noise) # reparametrization trick.
-        get_logits = model.model.module.get_logits
+        get_logits = model.model.get_logits
+        # get_logits = model.model.module.get_logits
 
         terms = {}
 

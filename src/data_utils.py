@@ -9,13 +9,12 @@ from transformers import PreTrainedTokenizerFast
 
 
 class TextDataset(Dataset):
-    def __init__(self, text_datasets, resolution, data_args, eigen_transform=None,
+    def __init__(self, text_datasets, resolution, eigen_transform=None,
                  mapping_func=None, model_emb=None, noise_level=0):
         super().__init__()
         self.resolution = resolution
         self.text_datasets = text_datasets
         self.length = len(self.text_datasets['train'])
-        self.data_args = data_args
         self.eigen_transform = eigen_transform
         self.mapping_func = mapping_func
         self.model_emb = model_emb
@@ -48,7 +47,10 @@ def helper_tokenize_encode(sentence_lst, vocab_dict, model, seqlen):
 
     with torch.no_grad():
         for input_ids in sentence_lst:
-            tokenized_ = [vocab_dict.get(x, vocab_dict['UNK']) for x in input_ids]
+            if isinstance(vocab_dict, PreTrainedTokenizerFast):
+                tokenized_ = [vocab_dict.convert_tokens_to_ids(x.lower()) for x in input_ids[:-1]]
+            else:
+                tokenized_ = [vocab_dict.get(x, vocab_dict['UNK']) for x in input_ids]
             input_ids = [0] + tokenized_ + [1]
             group_lst['word_ids'].append(input_ids)
 
@@ -73,9 +75,8 @@ def get_corpus(path, in_channel, model, image_size, split='train', load_vocab=No
     sentence_lst = []
     nlp = English()
     tokenizer = nlp.tokenizer
-    path = f'{path}/src1_{split}.txt'
           
-    with open(path, 'r') as ff:
+    with open(f'{path}/src1_{split}.txt', 'r') as ff:
         for row in ff:
             word_lst = row.split('||')[1]
             word_lst = [x.text for x in tokenizer(word_lst)]
@@ -120,16 +121,10 @@ def get_corpus(path, in_channel, model, image_size, split='train', load_vocab=No
 
 
 def load_data_text(batch_size, image_size, model, split, load_vocab):
-    training_data, model = get_corpus(
-        'data/e2e_data', 16, model, image_size, 
-        split=split, load_vocab=load_vocab
-    )
-    data_loader = DataLoader(
-        TextDataset(training_data, image_size),
+    return DataLoader(
+        TextDataset(get_corpus('data/e2e_data', 16, model, image_size, 
+        split=split, load_vocab=load_vocab), image_size),
         batch_size=batch_size,
         drop_last=True,
-        shuffle=False,
-        num_workers=4,
+        shuffle=False
     )
-    while True:
-        yield from data_loader
