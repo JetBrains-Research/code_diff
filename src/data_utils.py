@@ -120,7 +120,8 @@ def get_corpus(path, in_channel, model, image_size, split='train', load_vocab=No
     return {'train': result_train_lst}
 
 
-def load_data_text(batch_size, image_size, model, split, load_vocab):
+def load_data_text(batch_size, model, split, load_vocab):
+    image_size = 8
     return DataLoader(
         TextDataset(get_corpus('data/e2e_data', 16, model, image_size, 
         split=split, load_vocab=load_vocab), image_size),

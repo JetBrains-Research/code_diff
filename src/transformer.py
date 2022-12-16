@@ -23,7 +23,7 @@ class Transformer(torch.nn.Module):
 
         num_heads_upsample = num_heads
         config = AutoConfig.from_pretrained('bert-base-uncased')
-        config.max_position_embeddings = 4096
+        # config.max_position_embeddings = 4096
 
         self.in_channels = in_channels
         self.out_channels = out_channels

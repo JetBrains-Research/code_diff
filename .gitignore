@@ -1,2 +1,3 @@
 deprecated*
 data/*
+*__pycache__*

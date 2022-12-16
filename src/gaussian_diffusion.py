@@ -779,24 +779,24 @@ class GaussianDiffusion:
         # get_logits = model.model.module.get_logits
 
         terms = {}
-
         model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
-        B, C = x_t.size(0), x_t.size(-1)
+        # B, C = x_t.size(0), x_t.size(-1)
         
-        model_output, model_var_values = torch.split(model_output, C, dim=-1)
-        frozen_out = torch.cat([model_output.detach(), model_var_values], dim=-1)
+        # print("From inside", model_output.size(), B, C, x_t.size())
+        # model_output, model_var_values = torch.split(model_output, C, dim=-1)
+        # frozen_out = torch.cat([model_output.detach(), model_var_values], dim=-1)
 
-        terms["vb"] = self._vb_terms_bpd_e2e(
-            model=lambda *args, r=frozen_out: r,
-            x_start=x_start,
-            x_t=x_t,
-            t=t,
-            input_ids=input_ids,
-            get_logits=get_logits,
-            x_start_mean=x_start_mean, x_start_log_var=x_start_log_var,
-            clip_denoised=False,
-            noise=noise,
-        )["output"]
+        # terms["vb"] = self._vb_terms_bpd_e2e(
+        #     model=lambda *args, r=frozen_out: r,
+        #     x_start=x_start,
+        #     x_t=x_t,
+        #     t=t,
+        #     input_ids=input_ids,
+        #     get_logits=get_logits,
+        #     x_start_mean=x_start_mean, x_start_log_var=x_start_log_var,
+        #     clip_denoised=False,
+        #     noise=noise,
+        # )["output"]
                         
         target = noise
         terms["mse"] = mean_flat((target - model_output) ** 2)
@@ -810,10 +810,10 @@ class GaussianDiffusion:
 
         decoder_nll = self.token_discrete_loss(x_start, get_logits, input_ids)
 
-        if "vb" in terms:
-            terms["loss"] = terms["mse"] + terms["vb"]
-        else:
-            terms["loss"] = terms["mse"] + (decoder_nll + tT_loss)
+        # if "vb" in terms:
+        #     terms["loss"] = terms["mse"] + terms["vb"]
+        # else:
+        terms["loss"] = terms["mse"] + (decoder_nll + tT_loss)
         
         return terms
 
