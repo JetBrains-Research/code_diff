@@ -71,7 +71,7 @@ def helper_tokenize_encode(sentence_lst, vocab_dict, model, seqlen):
     return result_train_lst
 
 
-def get_corpus(path, in_channel, model, image_size, split='train', load_vocab=None):
+def get_corpus(path, model, image_size, split='train', vocab_dict=None):
     sentence_lst = []
     nlp = English()
     tokenizer = nlp.tokenizer
@@ -82,49 +82,44 @@ def get_corpus(path, in_channel, model, image_size, split='train', load_vocab=No
             word_lst = [x.text for x in tokenizer(word_lst)]
             sentence_lst.append(word_lst)
 
-    if load_vocab is None:
-        counter = Counter()
-        for input_ids in sentence_lst:
-            counter.update(input_ids)
+    # if load_vocab is None:
+    #     counter = Counter()
+    #     for input_ids in sentence_lst:
+    #         counter.update(input_ids)
 
-    path_save_vocab = f'{path}/vocab.json'
-    if load_vocab is None:
-        vocab_dict = {'START': 0, 'END': 1, 'UNK':2, 'PAD':3}
-        for k, v in counter.items():
-            if v > 10:
-                vocab_dict[k] = len(vocab_dict)
+    # path_save_vocab = f'{path}/vocab.json'
+    # if load_vocab is None:
+    #     vocab_dict = {'START': 0, 'END': 1, 'UNK':2, 'PAD':3}
+    #     for k, v in counter.items():
+    #         if v > 10:
+    #             vocab_dict[k] = len(vocab_dict)
 
-        with open(path_save_vocab, 'w') as f:
-            json.dump(vocab_dict, f)
-    else:
-        vocab_dict = load_vocab
-        if not os.path.exists(path_save_vocab):
-            if isinstance(vocab_dict, dict):
-                with open(path_save_vocab, 'w') as f:
-                    json.dump(vocab_dict, f)
-                assert vocab_dict['START'] == 0
-            elif isinstance(vocab_dict, PreTrainedTokenizerFast):
-                vocab_dict.save_pretrained(path)
+    #     with open(path_save_vocab, 'w') as f:
+    #         json.dump(vocab_dict, f)
+    # else:
+    # if not os.path.exists(path_save_vocab):
+    #     if isinstance(vocab_dict, dict):
+    #         with open(path_save_vocab, 'w') as f:
+    #             json.dump(vocab_dict, f)
+    #         assert vocab_dict['START'] == 0
+    #     elif isinstance(vocab_dict, PreTrainedTokenizerFast):
+    #         vocab_dict.save_pretrained(path)
 
-    path_save = f'{path}/random_emb.torch'
-    if model is None:
-        model = torch.nn.Embedding(len(vocab_dict), in_channel)
-        torch.nn.init.normal_(model.weight)
-        torch.save(model.state_dict(), path_save)
-
-    if not os.path.exists(path_save):
-        torch.save(model.state_dict(), path_save)
+    # if model is None:
+    #     model = torch.nn.Embedding(len(vocab_dict), in_channel)
+    #     torch.nn.init.normal_(model.weight)
+    #     torch.save(model.state_dict(), path_save)
 
     result_train_lst = helper_tokenize_encode(sentence_lst, vocab_dict, model, image_size**2)
     
     return {'train': result_train_lst}
 
 
-def load_data_text(batch_size, model, split, load_vocab):
+def load_data_text(batch_size, model, split, vocab_dict):
     image_size = 8
     return DataLoader(
-        TextDataset(get_corpus('data/e2e_data', 16, model, image_size, 
-        split=split, load_vocab=load_vocab), image_size),
+        TextDataset(get_corpus('data/e2e_data', model, image_size, 
+        split=split, vocab_dict=vocab_dict), image_size),
         batch_size=batch_size,
         drop_last=True,
         shuffle=False

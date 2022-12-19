@@ -1,0 +1,24 @@
+{
+    "os": "Linux-5.15.0-56-generic-x86_64-with-glibc2.29",
+    "python": "3.8.10",
+    "heartbeatAt": "2022-12-19T15:10:42.264346",
+    "startedAt": "2022-12-19T15:10:40.052603",
+    "docker": null,
+    "gpu": "NVIDIA GeForce RTX 2080 Ti",
+    "gpu_count": 8,
+    "cpu_count": 48,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "codePath": "scripts/train_diffusion_lm.py",
+    "program": "/home/dmivilensky/Diffusion-LM/scripts/train_diffusion_lm.py",
+    "git": {
+        "remote": "git@github.com:JetBrains-Research/code_diff.git",
+        "commit": "d893093d604e60b305cfd632bd73f23c86af9414"
+    },
+    "email": "pasechnyuk2004@gmail.com",
+    "root": "/home/dmivilensky/Diffusion-LM",
+    "host": "opt-mipt",
+    "username": "dmivilensky",
+    "executable": "/usr/bin/python3"
+}

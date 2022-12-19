@@ -1,0 +1,40 @@
+2022-12-19 15:27:54,333 INFO    MainThread:3457831 [internal.py:wandb_internal():88] W&B internal server running at pid: 3457831, started at: 2022-12-19 15:27:54.333568
+2022-12-19 15:27:54,336 DEBUG   HandlerThread:3457831 [handler.py:handle_request():101] handle_request: check_version
+2022-12-19 15:27:54,337 INFO    WriterThread:3457831 [datastore.py:open_for_write():77] open: /home/dmivilensky/Diffusion-LM/wandb/run-20221219_152753-refactoring/run-refactoring.wandb
+2022-12-19 15:27:54,337 DEBUG   SenderThread:3457831 [sender.py:send():122] send: header
+2022-12-19 15:27:54,337 DEBUG   SenderThread:3457831 [sender.py:send():122] send: request
+2022-12-19 15:27:54,337 DEBUG   SenderThread:3457831 [sender.py:send_request():131] send_request: check_version
+2022-12-19 15:27:54,463 DEBUG   SenderThread:3457831 [sender.py:send():122] send: run
+2022-12-19 15:27:54,689 ERROR   SenderThread:3457831 [internal_api.py:execute():126] 409 response executing GraphQL.
+2022-12-19 15:27:54,689 ERROR   SenderThread:3457831 [internal_api.py:execute():127] {"errors":[{"message":"run dmivilensky1/diffusion-lm/refactoring was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2022-12-19 15:27:55,934 ERROR   SenderThread:3457831 [internal_api.py:execute():126] 409 response executing GraphQL.
+2022-12-19 15:27:55,934 ERROR   SenderThread:3457831 [internal_api.py:execute():127] {"errors":[{"message":"run dmivilensky1/diffusion-lm/refactoring was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2022-12-19 15:27:58,272 ERROR   SenderThread:3457831 [internal_api.py:execute():126] 409 response executing GraphQL.
+2022-12-19 15:27:58,273 ERROR   SenderThread:3457831 [internal_api.py:execute():127] {"errors":[{"message":"run dmivilensky1/diffusion-lm/refactoring was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2022-12-19 15:27:58,273 ERROR   SenderThread:3457831 [retry.py:__call__():111] Retry attempt failed:
+Traceback (most recent call last):
+  File "/home/dmivilensky/.local/lib/python3.8/site-packages/wandb/old/retry.py", line 96, in __call__
+    result = self._call_fn(*args, **kwargs)
+  File "/home/dmivilensky/.local/lib/python3.8/site-packages/wandb/sdk/internal/internal_api.py", line 129, in execute
+    six.reraise(*sys.exc_info())
+  File "/usr/lib/python3/dist-packages/six.py", line 703, in reraise
+    raise value
+  File "/home/dmivilensky/.local/lib/python3.8/site-packages/wandb/sdk/internal/internal_api.py", line 123, in execute
+    return self.client.execute(*args, **kwargs)
+  File "/home/dmivilensky/.local/lib/python3.8/site-packages/wandb/vendor/gql-0.2.0/gql/client.py", line 52, in execute
+    result = self._get_result(document, *args, **kwargs)
+  File "/home/dmivilensky/.local/lib/python3.8/site-packages/wandb/vendor/gql-0.2.0/gql/client.py", line 60, in _get_result
+    return self.transport.execute(document, *args, **kwargs)
+  File "/home/dmivilensky/.local/lib/python3.8/site-packages/wandb/vendor/gql-0.2.0/gql/transport/requests.py", line 39, in execute
+    request.raise_for_status()
+  File "/usr/lib/python3/dist-packages/requests/models.py", line 940, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 409 Client Error: Conflict for url: https://api.wandb.ai/graphql
+2022-12-19 15:28:03,458 ERROR   SenderThread:3457831 [internal_api.py:execute():126] 409 response executing GraphQL.
+2022-12-19 15:28:03,459 ERROR   SenderThread:3457831 [internal_api.py:execute():127] {"errors":[{"message":"run dmivilensky1/diffusion-lm/refactoring was previously created and deleted; try a new run name","path":["upsertBucket"]}],"data":{"upsertBucket":null}}
+2022-12-19 15:28:03,646 WARNING MainThread:3457831 [internal.py:wandb_internal():146] Internal process interrupt: 1
+2022-12-19 15:28:04,421 WARNING MainThread:3457831 [internal.py:wandb_internal():146] Internal process interrupt: 2
+2022-12-19 15:28:04,421 ERROR   MainThread:3457831 [internal.py:wandb_internal():149] Internal process interrupted.
+2022-12-19 15:28:04,466 INFO    WriterThread:3457831 [datastore.py:close():258] close: /home/dmivilensky/Diffusion-LM/wandb/run-20221219_152753-refactoring/run-refactoring.wandb
+2022-12-19 15:28:04,475 INFO    HandlerThread:3457831 [handler.py:finish():532] shutting down handler
+2022-12-19 15:28:04,867 INFO    MainThread:3457831 [internal.py:handle_exit():78] Internal process exited
