@@ -2,10 +2,11 @@ import os
 import copy
 import wandb
 import torch
+import numpy as np
 from tqdm import tqdm
 from src import load_data_text
 from transformers import AutoTokenizer
-from src import SpacedDiffusion, UniformSampler, Transformer
+from src import GaussianDiffusion, UniformSampler, Transformer
 
 device = torch.device('cuda:3')
 
@@ -36,15 +37,19 @@ model = Transformer(
     logits_mode=1,
 ).to(device)
 
-diffusion = SpacedDiffusion(
-    diffusion_steps=1000,
-    rescale_timesteps=True,
-    model_arch='transformer',
-    training_mode='e2e',
-    device=device,
-    model=model
-)
+diffusion_steps = 1000
 
+# Take sqrt noise schedule alpha_bar from [Xiang Lisa Li et al., 2022], Appendix A
+# Calculate beta_t by factorizing their product alpha_bar_t (be definition, Section 4.2)
+alpha_bar = lambda t: 1 - np.sqrt(t + 0.0001)
+max_beta = 0.999
+betas = []
+for i in range(diffusion_steps):
+    t1 = i / diffusion_steps
+    t2 = (i + 1) / diffusion_steps
+    betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+
+diffusion = GaussianDiffusion(betas, model, device)
 schedule_sampler = UniformSampler(diffusion)
 
 print("Loading train dataset...")
@@ -72,7 +77,7 @@ ema_params = [copy.deepcopy(master_params) for _ in range(len(ema_rate))]
 
 epochs = 5
 validation_every = 250
-wandb.init(project="diffusion-lm", id="refactoring1")
+wandb.init(project="diffusion-lm", id="refactoring3")
 
 print("Start training...")
 for epoch in range(epochs):
@@ -89,7 +94,7 @@ for epoch in range(epochs):
         t, weights = schedule_sampler.sample(batch.shape[0], device)
 
         true_loss = diffusion.training_losses(model, batch, t, model_kwargs=micro_cond)["loss"]
-        train_loss += true_loss
+        train_loss += true_loss.mean()
         train_batches += 1
         loss = (true_loss * weights).mean()
         loss.backward()

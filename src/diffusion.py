@@ -1,6 +1,30 @@
 import torch
 import numpy as np
+from torch import nn
+from functools import partial
 
+
+def compute_logp(original_model, device, x, input_ids):
+    input_embs = original_model.transformer.wte
+    down_proj = original_model.down_proj
+    down_proj_emb = down_proj(input_embs.weight)
+    model = nn.Embedding(down_proj_emb.size(0), down_proj_emb.size(1))
+    model.weight.data = down_proj_emb
+    model.weight.requires_grad = False
+    
+    word_emb = model.weight.to(device)
+    sigma = 0.1
+    batch_size, seqlen, _ = x.shape
+
+    x_flat = x.reshape(-1, x.size(-1)).unsqueeze(0)
+    word_emb_flat = word_emb.unsqueeze(1)
+    diff = (x_flat - word_emb_flat) ** 2
+
+    logp_expanded = -diff.sum(dim=-1) / (2 * sigma ** 2)
+    logp_expanded = logp_expanded.permute((1, 0))
+    
+    cross_entropy = nn.CrossEntropyLoss(reduction='none')
+    return cross_entropy(logp_expanded, input_ids.view(-1)).view(batch_size, seqlen)
 
 def approx_standard_normal_cdf(x):
     return 0.5 * (1.0 + torch.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * torch.pow(x, 3))))
@@ -47,15 +71,7 @@ def mean_flat(tensor):
     return tensor.mean(dim=list(range(1, len(tensor.shape))))
 
 class GaussianDiffusion:
-    def __init__(
-        self, *, betas,
-        rescale_timesteps=False,
-        model_arch=None,
-        training_mode='emb'
-    ):
-        self.rescale_timesteps = rescale_timesteps
-        self.model_arch=model_arch
-
+    def __init__(self, betas, model, device):
         betas = np.array(betas, dtype=np.float64)
         self.betas = betas
 
@@ -87,8 +103,7 @@ class GaussianDiffusion:
             / (1.0 - self.alphas_cumprod)
         )
 
-        self.training_mode = training_mode
-        self.mapping_func = None
+        self.mapping_func = partial(compute_logp, model, device)
 
     def training_losses(self, model, *args, **kwargs):
         return self.training_losses_e2e(model, *args, **kwargs)
@@ -133,7 +148,7 @@ class GaussianDiffusion:
             model_kwargs = {}
         B, C = x.size(0), x.size(-1)
 
-        model_output = model(x, self._scale_timesteps(t), **model_kwargs)
+        model_output = model(x, t, **model_kwargs)
 
         model_variance, model_log_variance = (
             np.append(self.posterior_variance[1], self.betas[1:]),
@@ -167,7 +182,7 @@ class GaussianDiffusion:
             model_kwargs = {}
         B, C = x.size(0), x.size(-1)
         
-        model_output = model(x, self._scale_timesteps(t), **model_kwargs)
+        model_output = model(x, t, **model_kwargs)
         model_variance, model_log_variance = (
             np.append(self.posterior_variance[1], self.betas[1:]),
             np.log(np.append(self.posterior_variance[1], self.betas[1:])),
@@ -214,11 +229,6 @@ class GaussianDiffusion:
             _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
             - pred_xstart
         ) / _extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape)
-
-    def _scale_timesteps(self, t):
-        if self.rescale_timesteps:
-            return t.float() * (1000.0 / self.num_timesteps)
-        return t
 
     def p_sample(
         self, model, x, t, clip_denoised=True, denoised_fn=None, model_kwargs=None,
@@ -747,10 +757,7 @@ class GaussianDiffusion:
         return x_start_mean + std * noise
 
     def token_discrete_loss(self, x_t, get_logits, input_ids):
-        if self.model_arch == 'conv-unet' or  self.model_arch == '1d-unet':
-            reshaped_x_t = x_t.view(x_t.size(0), x_t.size(1), -1).permute(0, 2, 1)
-        else:
-            reshaped_x_t = x_t
+        reshaped_x_t = x_t
         logits = get_logits(reshaped_x_t)
         loss_fct = torch.nn.CrossEntropyLoss(reduction='none')
         decoder_nll = loss_fct(logits.view(-1, logits.size(-1)), input_ids.view(-1)).view(input_ids.shape)
@@ -765,7 +772,7 @@ class GaussianDiffusion:
 
     def training_losses_e2e(self, model, x_start, t, model_kwargs=None, noise=None):
         input_ids = model_kwargs.pop('input_ids').to(t.device)
-        x_start_mean = model.model.get_embeds(input_ids)
+        x_start_mean = model.get_embeds(input_ids)
         # x_start_mean = model.model.module.get_embeds(input_ids)
         std = _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod,
                                    torch.tensor([0]).to(x_start_mean.device),
@@ -775,11 +782,11 @@ class GaussianDiffusion:
         if noise is None:
             noise = torch.randn_like(x_start)
         x_t = self.q_sample(x_start, t, noise=noise) # reparametrization trick.
-        get_logits = model.model.get_logits
+        get_logits = model.get_logits
         # get_logits = model.model.module.get_logits
 
         terms = {}
-        model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
+        model_output = model(x_t, t, **model_kwargs)
         # B, C = x_t.size(0), x_t.size(-1)
         
         # print("From inside", model_output.size(), B, C, x_t.size())
