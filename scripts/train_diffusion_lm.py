@@ -1,5 +1,4 @@
 import os
-import copy
 import wandb
 import torch
 import numpy as np
@@ -8,6 +7,7 @@ from src import load_data_text
 from transformers import AutoTokenizer
 from src import GaussianDiffusion, UniformSampler, Transformer
 
+use_wandb = True
 device = torch.device('cuda:3')
 
 channel_mult = (1, 2, 3, 4)
@@ -41,8 +41,8 @@ diffusion_steps = 1000
 
 # Take sqrt noise schedule alpha_bar from [Xiang Lisa Li et al., 2022], Appendix A
 # Calculate beta_t by factorizing their product alpha_bar_t (be definition, Section 4.2)
-alpha_bar = lambda t: 1 - np.sqrt(t + 0.0001)
-max_beta = 0.999
+alpha_bar = lambda t: 1 - np.sqrt(t + 1e-16)
+max_beta = 1 - 1e-3
 betas = []
 for i in range(diffusion_steps):
     t1 = i / diffusion_steps
@@ -67,61 +67,51 @@ data_valid = load_data_text(
     model=model2
 )
 
-ema_rate = [0.9999]
-
-model_params = list(model.parameters())
-master_params = model_params
-
-optimizer = torch.optim.Adam(master_params)
-ema_params = [copy.deepcopy(master_params) for _ in range(len(ema_rate))]
-
+optimizer = torch.optim.Adam(model.parameters())
 epochs = 5
 validation_every = 250
-wandb.init(project="diffusion-lm", id="refactoring3")
+if use_wandb:
+    wandb.init(project="diffusion-lm")
 
 print("Start training...")
 for epoch in range(epochs):
     train_batches = 0
     train_loss = 0
     print('Epoch', epoch + 1, '/', epochs)
-    for i, (batch, cond) in enumerate(tqdm(data)):  
-        for p in model_params:
-            if p.grad is not None:
-                p.grad.zero_()
-
+    for i, (batch, input_ids) in enumerate(tqdm(data)):  
+        optimizer.zero_grad()
         batch = batch.to(device)
-        micro_cond = {k: v.to(device) for k, v in cond.items()}
+        input_ids = input_ids.to(device)
         t, weights = schedule_sampler.sample(batch.shape[0], device)
 
-        true_loss = diffusion.training_losses(model, batch, t, model_kwargs=micro_cond)["loss"]
+        true_loss = diffusion.training_losses(model, batch, t, input_ids)["loss"]
         train_loss += true_loss.mean()
         train_batches += 1
         loss = (true_loss * weights).mean()
         loss.backward()
         optimizer.step()
-        wandb.log({"train/loss": loss})
-
-        for rate, params in zip(ema_rate, ema_params):
-            for targ, src in zip(params, master_params):
-                targ.detach().mul_(rate).add_(src, alpha=1 - rate)
+        if use_wandb:
+            wandb.log({"train/loss": loss})
 
         if (i + 1) % validation_every == 0:
             val_batches = 0
             val_loss = 0
             print('Validation')
             with torch.no_grad():
-                for (batch_eval, cond_eval) in tqdm(data_valid):
-                    batch_eval = batch_eval.to(device)
-                    micro_cond = {k: v.to(device) for k, v in cond_eval.items()}
+                for (batch_eval, input_ids_eval) in tqdm(data_valid):
+                    batch_eval_eval = batch_eval.to(device)
+                    input_ids_eval = input_ids_eval.to(device)
                     t, weights = schedule_sampler.sample(batch_eval.shape[0], device)
 
-                    val_loss += diffusion.training_losses(model, batch_eval, t, model_kwargs=micro_cond)["loss"].mean()
+                    val_loss += diffusion.training_losses(model, batch_eval, t, input_ids_eval)["loss"].mean()
                     val_batches += 1
             
             val_loss = val_loss.cpu()
-            wandb.log({"val/loss": val_loss / val_batches})
+            if use_wandb:
+                wandb.log({"val/loss": val_loss / val_batches})
             print('validation loss =', val_loss / val_batches)
 
     train_loss = train_loss.cpu()
-    wandb.log({"train_epoch/loss": train_loss / train_batches})
+    if use_wandb:
+        wandb.log({"train_epoch/loss": train_loss / train_batches})
     print('train epoch loss =', train_loss / train_batches)

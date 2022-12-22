@@ -1,9 +1,7 @@
-import os
-import json
 import torch
 import numpy as np
 from spacy.lang.en import English
-from collections import Counter, defaultdict
+from collections import defaultdict
 from torch.utils.data import DataLoader, Dataset
 from transformers import PreTrainedTokenizerFast
 
@@ -35,10 +33,8 @@ class TextDataset(Dataset):
         if self.noise_level > 0:
             arr = arr + self.noise_level * np.random.randn(*arr.shape).astype(arr.dtype)
 
-        out_dict = {}
-        out_dict['input_ids'] = np.array(self.text_datasets['train'][idx]['input_ids'])
-
-        return arr, out_dict
+        input_ids = np.array(self.text_datasets['train'][idx]['input_ids'])
+        return arr, input_ids
 
 
 def helper_tokenize_encode(sentence_lst, vocab_dict, model, seqlen):

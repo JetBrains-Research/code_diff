@@ -1,6 +1,5 @@
 import math
 import torch
-import numpy as np
 from transformers import AutoConfig
 from transformers.models.bert.modeling_bert import BertEncoder
 
