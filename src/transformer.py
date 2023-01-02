@@ -5,6 +5,15 @@ from transformers.models.bert.modeling_bert import BertEncoder
 
 
 class Transformer(torch.nn.Module):
+    """
+    arg = time * T^{-[0 ... 1]}
+    [cos(arg), sin(arg)] ch -> ch * 4 -> hidden
+
+    x -> hidden -> hidden
+
+    BERT(pos_emb + x_emb + t_emb) hidden -> hidden -> out
+    """
+
     def __init__(
         self, in_channels, out_channels,
         model_channels,
@@ -22,7 +31,6 @@ class Transformer(torch.nn.Module):
 
         num_heads_upsample = num_heads
         config = AutoConfig.from_pretrained('bert-base-uncased')
-        # config.max_position_embeddings = 4096
 
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -47,7 +55,7 @@ class Transformer(torch.nn.Module):
         time_embed_dim = model_channels * 4
         self.time_embed = torch.nn.Sequential(
             torch.nn.Linear(model_channels, time_embed_dim),
-            SiLU(),
+            torch.nn.SiLU(),
             torch.nn.Linear(time_embed_dim, config.hidden_size)
         )
 
@@ -61,7 +69,6 @@ class Transformer(torch.nn.Module):
         )
         self.input_transformers = BertEncoder(config)
 
-        # print('max_position_embeddings', config.max_position_embeddings)
         self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
         self.position_embeddings = torch.nn.Embedding(config.max_position_embeddings, config.hidden_size)
         self.LayerNorm = torch.nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
@@ -88,14 +95,12 @@ class Transformer(torch.nn.Module):
             encoder_attention_mask = src_mask.unsqueeze(1).unsqueeze(1)
 
         if self.num_classes is not None:
-            assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
 
         emb_x = self.input_up_proj(x)
         seq_length = x.size(1)
         position_ids = self.position_ids[:, :seq_length]
-        # print('?', self.position_ids.size(), position_ids.size(), x.size())
-        # print(self.position_embeddings(position_ids).size(), emb_x.size(), emb.unsqueeze(1).expand(-1, seq_length, -1).size())
+
         emb_inputs = self.position_embeddings(position_ids) + emb_x + emb.unsqueeze(1).expand(-1, seq_length, -1)
         emb_inputs = self.dropout(self.LayerNorm(emb_inputs))
         if self.conditional_gen:
@@ -107,31 +112,6 @@ class Transformer(torch.nn.Module):
         h = self.output_down_proj(input_trans_hidden_states)
         h = h.type(x.dtype)
         return h
-
-    def get_feature_vectors(self, x, timesteps, y=None):
-        hs = []
-        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
-        if self.num_classes is not None:
-            assert y.shape == (x.shape[0],)
-            emb = emb + self.label_emb(y)
-        result = dict(down=[], up=[])
-        h = x.type(self.inner_dtype)
-        for module in self.input_blocks:
-            h = module(h, emb)
-            hs.append(h)
-            result["down"].append(h.type(x.dtype))
-        h = self.middle_block(h, emb)
-        result["middle"] = h.type(x.dtype)
-        for module in self.output_blocks:
-            cat_in = torch.cat([h, hs.pop()], dim=-1)
-            h = module(cat_in, emb)
-            result["up"].append(h.type(x.dtype))
-        return result
-
-
-class SiLU(torch.nn.Module):
-    def forward(self, x):
-        return x * torch.sigmoid(x)
 
 
 def timestep_embedding(timesteps, dim, max_period=10000):

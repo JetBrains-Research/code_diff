@@ -7,7 +7,7 @@ from src import load_data_text
 from transformers import AutoTokenizer
 from src import GaussianDiffusion, UniformSampler, Transformer
 
-use_wandb = True
+use_wandb = False
 device = torch.device('cuda:3')
 
 channel_mult = (1, 2, 3, 4)
@@ -49,7 +49,7 @@ for i in range(diffusion_steps):
     t2 = (i + 1) / diffusion_steps
     betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
 
-diffusion = GaussianDiffusion(betas, model, device)
+diffusion = GaussianDiffusion(betas, device)
 schedule_sampler = UniformSampler(diffusion)
 
 print("Loading train dataset...")
@@ -84,7 +84,7 @@ for epoch in range(epochs):
         input_ids = input_ids.to(device)
         t, weights = schedule_sampler.sample(batch.shape[0], device)
 
-        true_loss = diffusion.training_losses(model, batch, t, input_ids)["loss"]
+        true_loss = diffusion.loss(model, batch, t, input_ids)
         train_loss += true_loss.mean()
         train_batches += 1
         loss = (true_loss * weights).mean()
@@ -103,7 +103,7 @@ for epoch in range(epochs):
                     input_ids_eval = input_ids_eval.to(device)
                     t, weights = schedule_sampler.sample(batch_eval.shape[0], device)
 
-                    val_loss += diffusion.training_losses(model, batch_eval, t, input_ids_eval)["loss"].mean()
+                    val_loss += diffusion.loss(model, batch_eval, t, input_ids_eval).mean()
                     val_batches += 1
             
             val_loss = val_loss.cpu()
