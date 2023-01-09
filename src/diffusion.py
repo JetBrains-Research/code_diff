@@ -12,7 +12,7 @@ def mean_flat(tensor):
     return tensor.mean(dim=list(range(1, len(tensor.shape))))
 
 class GaussianDiffusion:
-    def __init__(self, betas, device):
+    def __init__(self, betas, device=torch.device("cpu")):
         self.device = device
         betas = np.array(betas, dtype=np.float64)
         self.betas = betas
@@ -57,6 +57,15 @@ class GaussianDiffusion:
         decoder_nll = self.token_discrete_loss(x_start, model.get_logits, input_ids)
         
         return mse + decoder_nll + last_tic_loss
+    
+    def q_sample(self, x_start, t, noise=None):
+        if noise is None:
+            noise = torch.randn_like(x_start)
+        return (
+            _extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
+            + _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape)
+            * noise
+        )
 
     def token_discrete_loss(self, x_t, get_logits, input_ids):
         logits = get_logits(x_t)
