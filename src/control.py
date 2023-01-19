@@ -28,7 +28,7 @@ class TreeControl(BertPreTrainedModel):
         self.post_init()
         
         self.lm_head2 = nn.Sequential(
-            nn.Linear(config.hidden_size*2, config.hidden_size),
+            nn.Linear(config.hidden_size * 2, config.hidden_size),
             nn.Tanh(),
             nn.Linear(config.hidden_size, config.tree_vocab_size, bias=False)
         )
@@ -85,7 +85,6 @@ class TreeControl(BertPreTrainedModel):
                 time_emb = self.time_embeddings(t).unsqueeze(1)
 
         if self.diffusion is None and t is not None:
-            # print(t, input_embs.shape, 'should see this')
             t = torch.LongTensor([t]).expand(input_embs.size(0)).to(self.device)
             time_emb = self.time_embeddings(t).unsqueeze(1)
 
@@ -109,7 +108,6 @@ class TreeControl(BertPreTrainedModel):
         )
         if t_aware and past_key_values is None:
             hidden_states = transformer_outputs[0][:, 1:, ]
-            # print(hidden_states)
         else:
             hidden_states = transformer_outputs[0]
 
@@ -121,12 +119,8 @@ class TreeControl(BertPreTrainedModel):
 
         loss = None
         if parse_chart is not None:
-            # Shift so that tokens < n predict n
-            shift_logits = lm_logits
-            shift_labels = parse_chart
-            # Flatten the tokens
             loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+            loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), parse_chart.view(-1))
 
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]
@@ -139,16 +133,4 @@ class TreeControl(BertPreTrainedModel):
             hidden_states=transformer_outputs.hidden_states,
             attentions=transformer_outputs.attentions,
             cross_attentions=transformer_outputs.cross_attentions,
-        )
-
-    @staticmethod
-    def _reorder_cache(past, beam_idx):
-        """
-        This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
-        [`~PreTrainedModel.beam_sample`] is called. This is required to match `past_key_values` with the correct
-        beam_idx at every generation step.
-        """
-        return tuple(
-            tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past)
-            for layer_past in past
         )

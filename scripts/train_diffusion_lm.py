@@ -53,6 +53,7 @@ diffusion = GaussianDiffusion(betas, device)
 schedule_sampler = UniformSampler(diffusion)
 
 print("Loading train dataset...")
+
 data = load_data_text(
     batch_size=32,
     split='train',

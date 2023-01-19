@@ -1,15 +1,17 @@
 import torch
 import wandb
 import benepar
-import evaluate
 import numpy as np
 from tqdm import tqdm
 from datasets import Dataset
 from collections import Counter
 from spacy.lang.en import English
 from torch.utils.data import DataLoader, RandomSampler
-from transformers import GPT2Config, default_data_collator
+from transformers import BertConfig, default_data_collator
 from src import GaussianDiffusion, TreeControl, chart_from_tree, pad_charts
+
+# torch.multiprocessing.set_start_method('spawn', force=True)
+benepar.download('benepar_en3')
 
 def _collate_batch_helper(examples, pad_token_id, max_length, return_mask=False, pad_mask_id=None):
     if pad_mask_id is None:
@@ -27,6 +29,8 @@ def _collate_batch_helper(examples, pad_token_id, max_length, return_mask=False,
 use_wandb = False
 device = torch.device('cuda:3')
 
+print("Loading train dataset...")
+
 train_dataset = []
 nlp = English()
 tokenizer = nlp.tokenizer
@@ -37,55 +41,35 @@ with open(path, 'r') as ff:
         word_lst = [x.text for x in tokenizer(word_lst)]
         train_dataset.append(word_lst)
 
+train_datasets = Dataset.from_dict({'text': train_dataset})
+raw_datasets = train_datasets.train_test_split(0.01)
+
 counter = Counter()
 for input_ids in train_dataset:
     counter.update(input_ids)
-
 vocab = {'START': 0, 'END': 1, 'UNK':2, 'PAD':3}
 for k, v in counter.items():
     if v > 10:
         vocab[k] = len(vocab)
-
-train_datasets = Dataset.from_dict({'text': train_dataset})
-raw_datasets = train_datasets.train_test_split(0.01)
-
-parser = benepar.Parser("benepar_en3")
-tree_vocab = parser._parser.config["label_vocab"]
-
 raw_datasets.vocab = vocab
-raw_datasets['validation'] = raw_datasets['test']
-
-config = GPT2Config()
-
-tokenizer = raw_datasets.vocab
+tokenizer = vocab
 reverse_tokenizer = {v: k for k, v in tokenizer.items()}
 
-config.vocab_size = len(tokenizer)
-diffusion_steps = 200
-
-alpha_bar = lambda t: 1 - np.sqrt(t + 1e-16)
-max_beta = 1 - 1e-3
-betas = []
-for i in range(diffusion_steps):
-    t1 = i / diffusion_steps
-    t2 = (i + 1) / diffusion_steps
-    betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
-
-diffusion = GaussianDiffusion(betas, device)
-
-config.input_emb_dim = 16 # TODO
-config.train_diff_steps = diffusion_steps
-
-config.tree_vocab_size = len(tree_vocab)
-model = TreeControl(config=config, diffusion=diffusion)
-
-model.transformer.embeddings.word_embeddings.load_state_dict(torch.load('data/e2e_data/random_emb.torch'))
-model.transformer.embeddings.word_embeddings.weight.requires_grad = False
-
-model.resize_token_embeddings(len(tokenizer))
-
+raw_datasets['validation'] = raw_datasets['test']
 column_names = raw_datasets["train"].column_names
 text_column_name = "text" if "text" in column_names else column_names[0]
+
+parser = benepar.Parser("benepar_en3")
+parser._parser = parser._parser.to(device)
+tree_vocab = parser._parser.config["label_vocab"]
+
+diffusion_steps = 200
+
+config = BertConfig()
+config.vocab_size = len(tokenizer)
+config.input_emb_dim = 16 # TODO
+config.tree_vocab_size = len(tree_vocab)
+config.train_diff_steps = diffusion_steps
 
 def tokenize_function(examples):
     vocab_dict = raw_datasets.vocab
@@ -100,14 +84,14 @@ def tokenize_function(examples):
         chart = chart_from_tree(tree_vocab, x)
         chart_lst.append(chart)
     input_ids = [[0] + [vocab_dict.get(x, vocab_dict['UNK']) for x in seq] + [1] for seq in examples['text']]
-    result_dict = {'input_ids': input_ids, 'chart_lst':chart_lst}
+    result_dict = {'input_ids': input_ids, 'chart_lst': chart_lst}
                 
     return result_dict
 
 tokenized_datasets = raw_datasets.map(
     tokenize_function,
     batched=True,
-    num_proc=4,
+    num_proc=1,
     remove_columns=column_names
 )
 
@@ -122,7 +106,7 @@ def pad_function(group_lst):
 lm_datasets = tokenized_datasets.map(
     pad_function,
     batched=True,
-    num_proc=4,
+    num_proc=1,
 )
 
 train_dataset = lm_datasets["train"]
@@ -130,7 +114,7 @@ train_dataloader = DataLoader(
     train_dataset,
     batch_size=32,
     sampler=RandomSampler(train_dataset, generator=torch.Generator()),
-    collate_fn=default_data_collator,
+    # collate_fn=default_data_collator,
     num_workers=4
 )
 
@@ -139,26 +123,29 @@ eval_dataloader = DataLoader(
     eval_dataset,
     batch_size=32,
     sampler=RandomSampler(eval_dataset, generator=torch.Generator()),
-    collate_fn=default_data_collator,
+    # collate_fn=default_data_collator,
     num_workers=4
 )
 
-def preprocess_logits_for_metrics(logits, labels):
-    print(logits[0].shape, logits[1].shape)
-    if type(logits) == tuple:
-        return logits[0].argmax(dim=-1)
-    else:
-        return logits.argmax(dim=-1)
+print("Creating models...")
 
-metric = evaluate.load("accuracy")
+# Take sqrt noise schedule alpha_bar from [Xiang Lisa Li et al., 2022], Appendix A
+# Calculate beta_t by factorizing their product alpha_bar_t (be definition, Section 4.2)
+alpha_bar = lambda t: 1 - np.sqrt(t + 1e-16)
+max_beta = 1 - 1e-3
+betas = []
+for i in range(diffusion_steps):
+    t1 = i / diffusion_steps
+    t2 = (i + 1) / diffusion_steps
+    betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
 
-def compute_metrics(eval_preds):
-    preds, labels = eval_preds
-    labels = labels[:, 1:].reshape(-1)
-    preds = preds[:, :-1].reshape(-1)
-    return metric.compute(predictions=preds, references=labels)
-
+diffusion = GaussianDiffusion(betas, device)
+model = TreeControl(config=config, diffusion=diffusion)
+model.transformer.embeddings.word_embeddings.load_state_dict(torch.load('data/e2e_data/random_emb.torch'))
+model.transformer.embeddings.word_embeddings.weight.requires_grad = False
+model.resize_token_embeddings(len(tokenizer))
 model = model.to(device)
+
 optimizer = torch.optim.Adam(model.parameters())
 epochs = 10
 if use_wandb:
