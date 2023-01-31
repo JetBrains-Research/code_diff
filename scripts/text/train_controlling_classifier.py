@@ -10,7 +10,6 @@ from torch.utils.data import DataLoader, RandomSampler
 from transformers import BertConfig, default_data_collator
 from src import GaussianDiffusion, TreeControl, chart_from_tree, pad_charts
 
-# torch.multiprocessing.set_start_method('spawn', force=True)
 benepar.download('benepar_en3')
 
 def _collate_batch_helper(examples, pad_token_id, max_length, return_mask=False, pad_mask_id=None):
@@ -26,7 +25,7 @@ def _collate_batch_helper(examples, pad_token_id, max_length, return_mask=False,
         return result, mask_
     return result
 
-use_wandb = False
+use_wandb = True
 device = torch.device('cuda:3')
 
 print("Loading train dataset...")
@@ -100,7 +99,7 @@ def pad_function(group_lst):
     max_length = 64
     group_lst['input_ids'] = _collate_batch_helper(group_lst['input_ids'], vocab_dict['PAD'], max_length)
     group_lst['parse_chart'] = pad_charts(group_lst['chart_lst'], padding_value=-100)
-            
+    del group_lst['chart_lst']
     return group_lst
 
 lm_datasets = tokenized_datasets.map(
@@ -114,7 +113,7 @@ train_dataloader = DataLoader(
     train_dataset,
     batch_size=32,
     sampler=RandomSampler(train_dataset, generator=torch.Generator()),
-    # collate_fn=default_data_collator,
+    collate_fn=default_data_collator,
     num_workers=4
 )
 
@@ -123,7 +122,7 @@ eval_dataloader = DataLoader(
     eval_dataset,
     batch_size=32,
     sampler=RandomSampler(eval_dataset, generator=torch.Generator()),
-    # collate_fn=default_data_collator,
+    collate_fn=default_data_collator,
     num_workers=4
 )
 
@@ -146,8 +145,9 @@ model.transformer.embeddings.word_embeddings.weight.requires_grad = False
 model.resize_token_embeddings(len(tokenizer))
 model = model.to(device)
 
-optimizer = torch.optim.Adam(model.parameters())
-epochs = 10
+optimizer = torch.optim.Adam(model.parameters(), weight_decay=1e-4, lr=1e-4)
+epochs = 1
+validation_every = 250
 if use_wandb:
     wandb.init(project="diffusion-lm")
 
@@ -156,8 +156,9 @@ for epoch in range(epochs):
     train_batches = 0
     train_loss = 0
     print('Epoch', epoch + 1, '/', epochs)
-    for inputs in tqdm(train_dataloader):
-        inputs = inputs.to(device)
+    for i, inputs in enumerate(tqdm(train_dataloader)):
+        inputs['input_ids'] = inputs['input_ids'].to(device)
+        inputs['parse_chart'] = inputs['parse_chart'].to(device)
         model.train()
         outputs = model(**inputs)
         loss = outputs["loss"]
@@ -170,7 +171,29 @@ for epoch in range(epochs):
         if use_wandb:
             wandb.log({"control/train/loss": loss})
 
+        if (i + 1) % validation_every == 0:
+            val_batches = 0
+            val_loss = 0
+            print('Validation')
+            with torch.no_grad():
+                for inputs_eval in tqdm(eval_dataloader):
+                    inputs_eval['input_ids'] = inputs_eval['input_ids'].to(device)
+                    inputs_eval['parse_chart'] = inputs_eval['parse_chart'].to(device)
+                    
+                    model.eval()
+                    outputs = model(**inputs_eval)
+                    loss = outputs["loss"]
+                    val_loss += loss.detach().mean()
+                    val_batches += 1
+            
+            val_loss = val_loss.cpu()
+            if use_wandb:
+                wandb.log({"control/val/loss": val_loss / val_batches})
+            print('validation loss =', val_loss / val_batches)
+
     train_loss = train_loss.cpu()
     if use_wandb:
         wandb.log({"control/train_epoch/loss": train_loss / train_batches})
     print('train epoch loss =', train_loss / train_batches)
+
+torch.save(model.state_dict(), "models/text/control.model")

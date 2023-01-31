@@ -7,7 +7,7 @@ from src import load_data_text
 from transformers import AutoTokenizer
 from src import GaussianDiffusion, UniformSampler, Transformer
 
-use_wandb = False
+use_wandb = True
 device = torch.device('cuda:3')
 
 channel_mult = (1, 2, 3, 4)
@@ -116,3 +116,5 @@ for epoch in range(epochs):
     if use_wandb:
         wandb.log({"train_epoch/loss": train_loss / train_batches})
     print('train epoch loss =', train_loss / train_batches)
+
+torch.save(model.state_dict(), "models/text/diffusion_lm.model")

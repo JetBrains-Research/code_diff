@@ -29,8 +29,8 @@ class GaussianDiffusion:
         # sigma_0 = sqrt(beta_0), Section 3.3
         # take q_phi(x_0 | w) = N(Emb(w), sigma_0^2 I), Section 4.1
         x_start = x_start_mean + np.sqrt(self.betas[0]) * torch.randn_like(x_start_mean)
-        # q(x_t | x_t-1) = N(П sqrt(1-beta), П beta)
-        # TODO: but here there is not П beta, but 1 - П (1 - beta)
+        # q(x_t | x_t-1) = N(П sqrt(1-beta), 1 - П (1 - beta))
+        # Node, there is not П beta, there is maybe a misprint in paper, but code is correct
         noise = torch.randn_like(x_start)
         x_t = _extract_into_tensor(np.sqrt(self.alphas_cumprod), t, x_start.shape, self.device) * x_start +\
               _extract_into_tensor(np.sqrt(1.0 - self.alphas_cumprod), t, x_start.shape, self.device) * noise       
@@ -40,7 +40,7 @@ class GaussianDiffusion:
         # mu_theta(x_t, t)
         model_output = model(x_t, t)
 
-        # L_simple(x_0) = ||mu_theta(x_t, t) - TODO: ?||^2
+        # L_simple(x_0) = ||eps_theta(x_t, t) - eps||^2
         mse = mean_flat((noise - model_output) ** 2)
         # f_theta(x_t, t), Section 4.2 and footnote 4 page 5
         model_out_x_start = _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod), t, x_t.shape, self.device) * x_t -\
@@ -62,8 +62,8 @@ class GaussianDiffusion:
         if noise is None:
             noise = torch.randn_like(x_start)
         return (
-            _extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start
-            + _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape)
+            _extract_into_tensor(np.sqrt(self.alphas_cumprod), t, x_start.shape, self.device) * x_start
+            + _extract_into_tensor(np.sqrt(1.0 - self.alphas_cumprod), t, x_start.shape, self.device)
             * noise
         )
 
