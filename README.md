@@ -11,5 +11,5 @@ Execute
 to train LM
 
 Execute 
-`python3 -m scripts.text.train_controlling_classifier
+`python3 -m scripts.text.train_controlling_classifier`
 to train syntax tree controlling classifier
