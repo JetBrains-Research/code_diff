@@ -7,5 +7,9 @@ Execute
 to install necessary dependencies
 
 Execute 
-`python3 -m scripts.train_diffusion_lm`
+`python3 -m scripts.text.train_diffusion_lm`
 to train LM
+
+Execute 
+`python3 -m scripts.text.train_controlling_classifier`
+to train syntax tree controlling classifier
