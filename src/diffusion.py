@@ -67,6 +67,49 @@ class GaussianDiffusion:
             * noise
         )
 
+    def sample(self, model, shape, rounding):
+        sample = torch.randn(*shape, device=self.device)
+        for i in range(self.num_timesteps, 0, -1):
+            t = torch.tensor([i] * shape[0], device=self.device)
+            with torch.no_grad():
+                sample = self.p_sample(model, sample, t, rounding)
+        return sample
+
+    def p_sample(self, model, x, t, rounding):
+        out = self.p_mean_variance(model, x, t, rounding)
+        noise = torch.randn_like(x)
+        # no noise when t == 0
+        nonzero_mask = (t != 0).float().view(-1, *([1] * (len(x.shape) - 1)))
+        sample = out["mean"] + nonzero_mask * torch.exp(0.5 * out["log_variance"]) * noise
+        return sample
+
+    def p_mean_variance(self, model, x, t, rounding):
+        # p_theta (x_t-1 | x_t)
+        # mu_theta(x_t, t)
+        model_output = model(x, t)
+
+        posterior_variance = self.betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
+        model_variance = np.append(posterior_variance[1], self.betas[1:])
+        model_log_variance = _extract_into_tensor(np.log(model_variance), t, x.shape, self.device)
+
+        # f_theta(x_t, t), Section 4.2 and footnote 4 page 5
+        x_start = _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod), t, x.shape, self.device) * x -\
+                  _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod - 1), t, x.shape, self.device) * model_output
+        # rounding
+        x_start = rounding(x_start, t)
+            
+        model_mean = self.q_posterior_mean(x_start=x_start, x_t=x, t=t)
+        return {
+            "mean": model_mean,
+            "log_variance": model_log_variance
+        }
+
+    def q_posterior_mean(self, x_start, x_t, t):
+        A = self.betas * np.sqrt(self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
+        B = (1.0 - self.alphas_cumprod_prev) * np.sqrt(1 - self.betas) / (1.0 - self.alphas_cumprod)
+        return _extract_into_tensor(A, t, x_t.shape, self.device) * x_start +\
+               _extract_into_tensor(B, t, x_t.shape, self.device) * x_t
+
     def token_discrete_loss(self, x_t, get_logits, input_ids):
         logits = get_logits(x_t)
         loss_fct = torch.nn.CrossEntropyLoss(reduction='none')
