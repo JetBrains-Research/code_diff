@@ -69,7 +69,7 @@ class GaussianDiffusion:
 
     def sample(self, model, shape, rounding):
         sample = torch.randn(*shape, device=self.device)
-        for i in range(self.num_timesteps, 0, -1):
+        for i in range(self.num_timesteps - 1, 0, -1):
             t = torch.tensor([i] * shape[0], device=self.device)
             with torch.no_grad():
                 sample = self.p_sample(model, sample, t, rounding)
@@ -86,15 +86,15 @@ class GaussianDiffusion:
     def p_mean_variance(self, model, x, t, rounding):
         # p_theta (x_t-1 | x_t)
         # mu_theta(x_t, t)
-        model_output = model(x, t)
+        model_output = model(x, torch.clone(t))
 
         posterior_variance = self.betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
         model_variance = np.append(posterior_variance[1], self.betas[1:])
-        model_log_variance = _extract_into_tensor(np.log(model_variance), t, x.shape, self.device)
-
+        model_log_variance = _extract_into_tensor(np.log(model_variance), torch.clone(t), x.shape, self.device)
+            
         # f_theta(x_t, t), Section 4.2 and footnote 4 page 5
-        x_start = _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod), t, x.shape, self.device) * x -\
-                  _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod - 1), t, x.shape, self.device) * model_output
+        x_start = _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod), torch.clone(t), x.shape, self.device) * x -\
+                  _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod - 1), torch.clone(t), x.shape, self.device) * model_output
         # rounding
         x_start = rounding(x_start, t)
             

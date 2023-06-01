@@ -1,4 +1,4 @@
-numpy>=1.23.5
+numpy==1.23.5
 spacy>=3.4.3
 torch
 datasets>=2.7.1

@@ -40,11 +40,12 @@ def rounding(model, text_emb, t):
     return new_embeds
 
 device = torch.device('cuda:3')
+# device = torch.device('cpu')
 
 channels = 8
 batch_size = 32
 sigma_small = True
-num_samples = 1024
+num_samples = 32 # 1024
 num_samples = (num_samples // batch_size) * batch_size
 diffusion_steps = 1000
 
@@ -87,21 +88,30 @@ model2 = torch.nn.Embedding(len(tokenizer), channels)
 model2.weight = torch.nn.Parameter(model.word_embedding.weight.clone().cpu())    
 model3 = get_weights(model2)
 
-seq_len = 64
+# seq_len = 64
+seq_len = 10
 x_t = torch.zeros((num_samples, seq_len, channels)).to(device)
 
 for i in range(num_samples // batch_size):
-    x_t[i * batch_size: (i + 1) * batch_size] = diffusion.sample(
+    sample = diffusion.sample(
         model, (batch_size, seq_len, channels), partial(rounding, model3.cuda()))
+    x_t[i * batch_size: (i + 1) * batch_size] = sample
 
 logits = model.get_logits(x_t)
 tokens = torch.topk(logits, k=1, dim=-1).indices
 
-with open('data/e2e_data/vocab.json', 'r') as f:
-    vocab = json.load(f)
-tokenizer = {v: k for k, v in vocab.items()}
+# with open('data/e2e_data/vocab.json', 'r') as f:
+#     vocab = json.load(f)
+# tokenizer = {v: k for k, v in vocab.items()}
+
+tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+
+os.makedirs("outputs", exist_ok=True)
+file = open("outputs/lm.txt", "a")
 
 words = []
 for seq in tokens:
-    words.append(" ".join([tokenizer[x[0].item()] for x in seq]))
-print(words)
+    words.append(" ".join([tokenizer.convert_ids_to_tokens(x.item()) for x in seq]))
+    file.write(words[-1] + "\n")
+
+file.close()
