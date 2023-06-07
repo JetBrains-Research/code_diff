@@ -7,15 +7,6 @@ from src import Transformer, GaussianDiffusion
 from transformers import AutoTokenizer
 
 
-def get_weights(model):
-    # input_embs = model.transformer.wte
-    # down_proj = model.down_proj
-    # down_proj_emb = down_proj(input_embs.weight)
-    # model = torch.nn.Embedding(down_proj_emb.size(0), down_proj_emb.size(1))
-    # model.weight.data = down_proj_emb    
-    model.weight.requires_grad = False
-    return model
-
 def rounding(model, text_emb, t):
     down_proj_emb = model.weight
     old_shape = text_emb.shape
@@ -54,7 +45,10 @@ attention_ds = []
 for res in [16, 8]:
     attention_ds.append(64 // int(res))
 
-rev_tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+# rev_tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+with open('data/e2e_data/vocab.json', 'r') as f:
+    rev_tokenizer = json.load(f)
+tokenizer = {v: k for k, v in rev_tokenizer.items()}
 
 model = Transformer(
     in_channels=channels, out_channels=channels,
@@ -83,35 +77,29 @@ for i in range(diffusion_steps):
 
 diffusion = GaussianDiffusion(betas, device)
 
-tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
 model2 = torch.nn.Embedding(len(tokenizer), channels)
-model2.weight = torch.nn.Parameter(model.word_embedding.weight.clone().cpu())    
-model3 = get_weights(model2)
+model2.load_state_dict(torch.load('models/text/random_emb.torch'))
+model2.weight = torch.nn.Parameter(model.word_embedding.weight.clone().cpu())
+model2.weight.requires_grad = False
 
-# seq_len = 64
 seq_len = 10
 x_t = torch.zeros((num_samples, seq_len, channels)).to(device)
 
 for i in range(num_samples // batch_size):
     sample = diffusion.sample(
-        model, (batch_size, seq_len, channels), partial(rounding, model3.cuda()))
+        model, (batch_size, seq_len, channels), partial(rounding, model2.cuda()))
     x_t[i * batch_size: (i + 1) * batch_size] = sample
 
 logits = model.get_logits(x_t)
 tokens = torch.topk(logits, k=1, dim=-1).indices
-
-# with open('data/e2e_data/vocab.json', 'r') as f:
-#     vocab = json.load(f)
-# tokenizer = {v: k for k, v in vocab.items()}
-
-tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
 
 os.makedirs("outputs", exist_ok=True)
 file = open("outputs/lm.txt", "a")
 
 words = []
 for seq in tokens:
-    words.append(" ".join([tokenizer.convert_ids_to_tokens(x.item()) for x in seq]))
+    words.append(" ".join([tokenizer[x.item()] for x in seq]))
+    # words.append(" ".join([tokenizer.convert_ids_to_tokens(x.item()) for x in seq]))
     file.write(words[-1] + "\n")
 
 file.close()

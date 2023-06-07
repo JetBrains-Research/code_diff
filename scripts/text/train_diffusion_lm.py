@@ -1,4 +1,5 @@
 import os
+import json
 import wandb
 import torch
 import numpy as np
@@ -17,14 +18,18 @@ for res in [16, 8]:
 
 print("Creating models...")
 
-rev_tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+# rev_tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
+with open('data/e2e_data/vocab.json', 'r') as f:
+    rev_tokenizer = json.load(f)
+
 channels = 8
 model2 = torch.nn.Embedding(len(rev_tokenizer), channels)
-path_save = 'data/e2e_data/random_emb.torch'
+path_save = 'models/text/random_emb.torch'
 if not os.path.exists(path_save):
     torch.save(model2.state_dict(), path_save)
 print('vocab size:', len(rev_tokenizer))
 
+# exit()
 model = Transformer(
     in_channels=channels, out_channels=channels,
     model_channels=128,

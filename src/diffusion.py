@@ -18,8 +18,8 @@ class GaussianDiffusion:
         self.betas = betas
         self.num_timesteps = int(betas.shape[0])
 
-        alphas = 1.0 - betas
-        self.alphas_cumprod = np.cumprod(alphas, axis=0)
+        self.alphas = 1.0 - betas
+        self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
         self.alphas_cumprod_prev = np.append(1.0, self.alphas_cumprod[:-1])
 
     def loss(self, model, x_start, t, input_ids):
@@ -30,7 +30,6 @@ class GaussianDiffusion:
         # take q_phi(x_0 | w) = N(Emb(w), sigma_0^2 I), Section 4.1
         x_start = x_start_mean + np.sqrt(self.betas[0]) * torch.randn_like(x_start_mean)
         # q(x_t | x_t-1) = N(П sqrt(1-beta), 1 - П (1 - beta))
-        # Node, there is not П beta, there is maybe a misprint in paper, but code is correct
         noise = torch.randn_like(x_start)
         x_t = _extract_into_tensor(np.sqrt(self.alphas_cumprod), t, x_start.shape, self.device) * x_start +\
               _extract_into_tensor(np.sqrt(1.0 - self.alphas_cumprod), t, x_start.shape, self.device) * noise       
@@ -41,22 +40,29 @@ class GaussianDiffusion:
         model_output = model(x_t, t)
 
         # L_simple(x_0) = ||eps_theta(x_t, t) - eps||^2
-        mse = mean_flat((noise - model_output) ** 2)
+        # mse = mean_flat((noise - model_output) ** 2)
+        mse = mean_flat((x_start - model_output) ** 2)
         # f_theta(x_t, t), Section 4.2 and footnote 4 page 5
-        model_out_x_start = _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod), t, x_t.shape, self.device) * x_t -\
-                            _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod - 1), t, x_t.shape, self.device) * model_output
+        # model_out_x_start = _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod), t, x_t.shape, self.device) * x_t -\
+        #                     _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod - 1), t, x_t.shape, self.device) * model_output
+        model_out_x_start = _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod), t, x_t.shape, self.device) * x_t +\
+                            _extract_into_tensor(np.sqrt(1.0 / self.alphas_cumprod - 1), t, x_t.shape, self.device) * x_start
         # ||f_theta(x_t, t) - x_0||^2, Section 4.2
-        t0_loss = mean_flat((x_start_mean - model_out_x_start) ** 2)
+        # t0_loss = mean_flat((x_start_mean - model_out_x_start) ** 2)
+        t0_loss = mean_flat(model_out_x_start ** 2)
         mse = torch.where(t == 0, t0_loss, mse)
+
+        last_tic_loss = mean_flat((np.sqrt(self.alphas_cumprod[-2]) * self.betas[-1] / (1 - self.alphas_cumprod[-1]) * x_start + np.sqrt(self.alphas[-1]) * (1 - self.alphas_cumprod[-2]) / (1 - self.alphas_cumprod[-1]) * x_t[-1]) ** 2)
+        first_tic_loss = mean_flat((x_start_mean - model(x_t[1:2], t[1:2])) ** 2)
 
         # q(x_T | x_0) from (1)
         # ||sqrt(П (1 - beta)) x_0||^2
-        last_tic_loss =  mean_flat((_extract_into_tensor(np.sqrt(self.alphas_cumprod), self.betas.shape[0] - 1, x_start.shape, self.device) * x_start) ** 2)
+        # last_tic_loss =  mean_flat((_extract_into_tensor(np.sqrt(self.alphas_cumprod), self.betas.shape[0] - 1, x_start.shape, self.device) * x_start) ** 2)
 
         # cross entropy H(x_0, w) = -E_q log p = -log p_theta(w | x_0)
         decoder_nll = self.token_discrete_loss(x_start, model.get_logits, input_ids)
         
-        return mse + decoder_nll + last_tic_loss
+        return mse + decoder_nll + first_tic_loss + last_tic_loss
     
     def q_sample(self, x_start, t, noise=None):
         if noise is None:
